@@ -39,37 +39,36 @@ function run(msg, matches)
   -- replace short URLs
   if response.entities.url then
     for k, v in pairs(response.entities.urls) do 
-        local short = v.url
-        local long = v.expanded_url
-        text = text:gsub(short, long)
+      local short = v.url
+      local long = v.expanded_url
+      text = text:gsub(short, long)
     end
   end
   
   -- remove images
   local images = {}
-  if response.entities.media then
-    for k, v in pairs(response.entities.media) do
-        local url = v.url
-        local pic = v.media_url
-        text = text:gsub(url, "")
-        table.insert(images, pic)
+  if response.extended_entities and response.extended_entities.media then
+    for k, v in pairs(response.extended_entities.media) do
+      local url = v.url
+      local pic = v.media_url
+      text = text:gsub(url, "")
+      table.insert(images, pic)
     end
   end
 
   -- send the parts 
   local receiver = get_receiver(msg)
   send_msg(receiver, header .. "\n" .. text, ok_cb, false)
-  for k, v in pairs(images) do
-    local file = download_to_file(v)
-    send_photo(receiver, file, ok_cb, false)
-  end
-  
+  send_photos_from_url(receiver, images)
   return nil
 end
+ 
 
 return {
-    description = "When user sends twitter URL, send text and images to origin. Requieres OAuth Key.", 
-    usage = "",
-    patterns = {"https://twitter.com/[^/]+/status/([0-9]+)"}, 
-    run = run 
+  description = "When user sends twitter URL, send text and images to origin. Requieres OAuth Key.", 
+  usage = "",
+  patterns = {
+    "https://twitter.com/[^/]+/status/([0-9]+)"
+  }, 
+  run = run 
 }

@@ -1,9 +1,20 @@
+http = require "socket.http"
+https = require "ssl.https"
+ltn12 = require "ltn12"
+URL = require "socket.url"
+json = (loadfile "./libs/JSON.lua")()
+serpent = (loadfile "./libs/serpent.lua")()
+mimetype = (loadfile "./libs/mimetype.lua")()
+
 function get_receiver(msg)
   if msg.to.type == 'user' then
     return 'user#id'..msg.from.id
   end
   if msg.to.type == 'chat' then
     return 'chat#id'..msg.to.id
+  end
+  if msg.to.type == 'encr_chat' then
+    return msg.to.print_name
   end
 end
 
@@ -15,7 +26,6 @@ function is_chat_msg( msg )
 end
 
 function string.random(length)
-   math.randomseed(os.time())
    local str = "";
    for i = 1, length do
       math.random(97, 122)
@@ -31,51 +41,76 @@ function string:split(sep)
   return fields
 end
 
--- Removes spaces
+-- DEPRECATED
 function string.trim(s)
+  print("string.trim(s) is DEPRECATED use string:trim() instead")
   return s:gsub("^%s*(.-)%s*$", "%1")
 end
 
-function download_to_file( url , noremove )
-  print("url to download: "..url)
-  local ltn12 = require "ltn12"
-  local respbody = {}
-  one, c, h = http.request{url=url, sink=ltn12.sink.table(respbody), redirect=true}
-  htype = h["content-type"]
+-- Removes spaces
+function string:trim()
+  return self:gsub("^%s*(.-)%s*$", "%1")
+end
 
-  if htype == "image/jpeg" then
-    file_name = string.random(5)..".jpg"
-    file_path = "/tmp/"..file_name
-  else
-    if htype == "image/gif" then
-      file_name = string.random(5)..".gif"
-      file_path = "/tmp/"..file_name
-    else
-      if htype == "image/png" then
-        file_name = string.random(5)..".png"
-        file_path = "/tmp/"..file_name
-      else
-        file_name = url:match("([^/]+)$")
-        file_path = "/tmp/"..file_name
-      end
-    end
+function get_http_file_name(url, headers)
+  -- Everything after the last /
+  local file_name = url:match("([^/]+)$")
+  -- Possible headers names
+  local content_type = headers["content-type"] 
+  content_type = content_type or headers["Content-type"]
+  content_type = content_type or h["Content-Type"]
+  
+  local extension = nil
+  if content_type then
+    extension = mimetype.get_mime_extension(content_type)
   end
+  if extension then
+    file_name = file_name.."."..extension
+  end
+  return file_name
+end
+
+--  Saves file to /tmp/. If file_name isn't provided, 
+-- will get the text after the last "/" for filename 
+-- and content-type for extension
+function download_to_file(url, file_name)
+  print("url to download: "..url)
+
+  local respbody = {}
+  local options = {
+    url = url,
+    sink = ltn12.sink.table(respbody),
+    redirect = true
+  }
+
+  -- nil, code, headers, status
+  local response = nil
+
+  if url:starts('https') then
+    options.redirect = false
+    response = {https.request(options)}
+  else
+    response = {http.request(options)}
+  end
+
+  local code = response[2]
+  local headers = response[3]
+  local status = response[4]
+
+  if code ~= 200 then return nil end
+
+  file_name = file_name or get_http_file_name(url, headers)
+    
+  local file_path = "/tmp/"..file_name
+  print("Saved to: "..file_path)
+
   file = io.open(file_path, "w+")
   file:write(table.concat(respbody))
   file:close()
 
-  if noremove == nil then
-    print(file_path.."will be removed in 20 seconds")
-    postpone(rmtmp_cb, file_path, 20)
-  end
-
   return file_path
 end
 
--- Callback to remove a file
-function rmtmp_cb(file_path, success, result)
-   os.remove(file_path)
-end
 
 function vardump(value, depth, key)
   local linePrefix = ""
@@ -132,24 +167,25 @@ function run_command(str)
   return result
 end
 
+-- User has priviledges
 function is_sudo(msg)
-   local var = false
-   -- Check users id in config 
-   for v,user in pairs(_config.sudo_users) do 
-      if user == msg.from.id then 
-         var = true 
-      end
-   end
-   return var
+  local var = false
+  -- Check users id in config 
+  for v,user in pairs(_config.sudo_users) do 
+    if user == msg.from.id then 
+      var = true 
+    end
+  end
+  return var
 end
 
 -- Returns the name of the sender
 function get_name(msg)
-   local name = msg.from.first_name
-   if name == nil then
-      name = msg.from.id
-   end
-   return name
+  local name = msg.from.first_name
+  if name == nil then
+    name = msg.from.id
+  end
+  return name
 end
 
 -- Returns at table of lua files inside plugins
@@ -191,7 +227,160 @@ function string:isempty()
   return self == nil or self == ''
 end
 
+-- Retruns true if the string is blank
+function string:isblank()
+  self = self:trim()
+  return self:isempty()
+end
 
+-- DEPRECATED!!!!!
 function string.starts(String, Start)
-   return Start == string.sub(String,1,string.len(Start))
+  print("string.starts(String, Start) is DEPRECATED use string:starts(text) instead")
+  return Start == string.sub(String,1,string.len(Start))
+end
+
+-- Returns true if String starts with Start
+function string:starts(text)
+  return text == string.sub(self,1,string.len(text))
+end
+
+-- Send image to user and delete it when finished.
+-- cb_function and cb_extra are optionals callback
+function _send_photo(receiver, file_path, cb_function, cb_extra)
+  local cb_extra = {
+    file_path = file_path,
+    cb_function = cb_function,
+    cb_extra = cb_extra
+  }
+  -- Call to remove with optional callback
+  send_photo(receiver, file_path, rmtmp_cb, cb_extra)
+end
+
+-- Download the image and send to receiver, it will be deleted.
+-- cb_function and cb_extra are optionals callback
+function send_photo_from_url(receiver, url, cb_function, cb_extra)
+  -- If callback not provided
+  cb_function = cb_function or ok_cb
+  cb_extra = cb_extra or false
+  
+  local file_path = download_to_file(url, false)
+  if not file_path then -- Error
+    local text = 'Error downloading the image'
+    send_msg(receiver, text, cb_function, cb_extra)
+  else
+    print("File path: "..file_path)
+    _send_photo(receiver, file_path, cb_function, cb_extra)
+  end
+end
+
+-- Same as send_photo_from_url but as callback function
+function send_photo_from_url_callback(cb_extra, success, result)
+  local receiver = cb_extra.receiver
+  local url = cb_extra.url
+  
+  local file_path = download_to_file(url, false)
+  if not file_path then -- Error
+    local text = 'Error downloading the image'
+    send_msg(receiver, text, ok_cb, false)
+  else
+    print("File path: "..file_path)
+    _send_photo(receiver, file_path, ok_cb, false)
+  end
+end
+
+--  Send multimple images asynchronous.
+-- param urls must be a table.
+function send_photos_from_url(receiver, urls)
+  local cb_extra = {
+    receiver = receiver,
+    urls = urls,
+    remove_path = nil
+  }
+  send_photos_from_url_callback(cb_extra)
+end
+
+-- Use send_photos_from_url. 
+-- This fuction might be difficult to understand.
+function send_photos_from_url_callback(cb_extra, success, result)
+  -- cb_extra is a table containing receiver, urls and remove_path
+  local receiver = cb_extra.receiver
+  local urls = cb_extra.urls
+  local remove_path = cb_extra.remove_path
+
+  -- The previously image to remove
+  if remove_path ~= nil then
+    os.remove(remove_path)
+    print("Deleted: "..remove_path)
+  end
+
+  -- Nil or empty, exit case (no more urls)
+  if urls == nil or #urls == 0 then
+    return false
+  end
+
+  -- Take the head and remove from urls table
+  local head = table.remove(urls, 1)
+
+  local file_path = download_to_file(head, false)
+  local cb_extra = {
+    receiver = receiver,
+    urls = urls,
+    remove_path = file_path
+  }
+
+  -- Send first and postpone the others as callback
+  send_photo(receiver, file_path, send_photos_from_url_callback, cb_extra)
+end
+
+-- Callback to remove a file
+function rmtmp_cb(cb_extra, success, result)
+  local file_path = cb_extra.file_path
+  local cb_function = cb_extra.cb_function or ok_cb
+  local cb_extra = cb_extra.cb_extra
+
+  if file_path ~= nil then
+    os.remove(file_path)
+    print("Deleted: "..file_path)
+  end
+  -- Finaly call the callback
+  cb_function(cb_extra, success, result)
+end
+
+-- Send document to user and delete it when finished.
+-- cb_function and cb_extra are optionals callback
+function _send_document(receiver, file_path, cb_function, cb_extra)
+  local cb_extra = {
+    file_path = file_path,
+    cb_function = cb_function or ok_cb,
+    cb_extra = cb_extra or false
+  }
+  -- Call to remove with optional callback
+  send_document(receiver, file_path, rmtmp_cb, cb_extra)
+end
+
+-- Download the image and send to receiver, it will be deleted.
+-- cb_function and cb_extra are optionals callback
+function send_document_from_url(receiver, url, cb_function, cb_extra)
+  local file_path = download_to_file(url, false)
+  print("File path: "..file_path)
+  _send_document(receiver, file_path, cb_function, cb_extra)
+end
+
+-- Parameters in ?a=1&b=2 style
+function format_http_params(params, is_get)
+  local str = ''
+  -- If is get add ? to the beginning
+  if is_get then str = '?' end
+  local first = true -- Frist param
+  for k,v in pairs (params) do
+    if v then -- nil value
+      if first then
+        first = false
+        str = str..k.. "="..v
+      else
+        str = str.."&"..k.. "="..v
+      end
+    end
+  end
+  return str
 end

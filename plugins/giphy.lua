@@ -1,36 +1,60 @@
 -- Idea by https://github.com/asdofindia/telegram-bot/
 -- See http://api.giphy.com/
 
-function get_random_top()
-  local api_key = "dc6zaTOxFJmzC" -- public beta key
-  b = http.request("http://api.giphy.com/v1/gifs/trending?api_key="..api_key)
-  local images = json:decode(b).data
-  math.randomseed(os.time())
+do
+
+local BASE_URL = 'http://api.giphy.com/v1'
+local API_KEY = 'dc6zaTOxFJmzC' -- public beta key
+
+function get_image(response)
+  local images = json:decode(response).data
+  if #images == 0 then return nil end -- No images
   local i = math.random(0,#images)
-  return images[i].images.downsized.url
+  local image =  images[i] -- A random one
+
+  if image.images.downsized then
+    return image.images.downsized.url
+  end
+
+  if image.images.original then
+    return image.original.url
+  end
+
+  return nil
+end
+
+function get_random_top()
+  local url = BASE_URL.."/gifs/trending?api_key="..API_KEY
+  local response, code = http.request(url)
+  if code ~= 200 then return nil end
+  return get_image(response)
 end
 
 function search(text)
-  local api_key = "dc6zaTOxFJmzC" -- public beta key
-  b = http.request("http://api.giphy.com/v1/gifs/search?q="..text.."&api_key="..api_key)
-  local images = json:decode(b).data
-  math.randomseed(os.time())
-  local i = math.random(0,#images)
-  return images[i].images.downsized.url
+  text = URL.escape(text)
+  local url = BASE_URL.."/gifs/search?q="..text.."&api_key="..API_KEY
+  local response, code = http.request(url)
+  if code ~= 200 then return nil end
+  return get_image(response)
 end
 
 function run(msg, matches)
-  -- If no search data, a cat gif will be sended
-  -- Because everyone loves pussies
+  local gif_url = nil
+  
+  -- If no search data, a random trending GIF will be sended
   if matches[1] == "!gif" or matches[1] == "!giphy" then
     gif_url = get_random_top()
   else
     gif_url = search(matches[1])
   end
 
-  file = download_to_file(gif_url)
-  send_document(get_receiver(msg), file, ok_cb, false)
-  return "preparing to make you laugh"
+  if not gif_url then 
+    return "Error: GIF not found"
+  end
+
+  local receiver = get_receiver(msg)
+  send_document_from_url(receiver, gif_url)
+  return "Preparing to make you laugh"
 end
 
 return {
@@ -47,3 +71,5 @@ return {
   },
   run = run
 }
+
+end
