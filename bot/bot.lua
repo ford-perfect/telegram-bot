@@ -1,9 +1,11 @@
+luarocks = require('luarocks.loader')
 http = require("socket.http")
 https = require("ssl.https")
 URL = require("socket.url")
 json = (loadfile "./libs/JSON.lua")()
 serpent = (loadfile "./libs/serpent.lua")()
 require("./bot/utils")
+require("./bot/dateparse")
 
 VERSION = '0.8.6'
 
@@ -36,7 +38,7 @@ end
 function msg_valid(msg)
   -- Dont process outgoing messages
   if msg.out then
-    return false
+    return true--false
   end
   if msg.date < now then
     return false

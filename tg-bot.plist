@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.telegram-bot.1.app</string>
+	<key>Program</key>
+	<string>/Users/vad/darlek6/DEV/bots/telegram-bot/launch.sh</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>/opt/local/lib/postgresql93/bin:/opt/local/bin:/opt/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/X11/bin:/usr/local/MacGPG2/bin:/usr/texbin:/usr/local/git/bin:/Users/vad/darlek6/bash:/Users/vad/Library/bin</string>
+	</dict>
+	<key>StandardInPath</key>
+	<string>/Users/vad/Library/Logs/tg-bot/bot1.stdin</string>
+	<key>StandardOutPath</key>
+	<string>/Users/vad/Library/Logs/tg-bot/bot1.stdout</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/vad/Library/Logs/tg-bot/bot1.stderr</string>
+	<key>WorkingDirectory</key>
+	<string>/Users/vad/darlek6/DEV/bots/telegram-bot</string>
+</dict>
+</plist>
